@@ -24,14 +24,24 @@ jobs:
   apk:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
-      - uses: android-actions/setup-android@v3
+      # Le SDK Android est déjà installé sur les machines de GitHub (ANDROID_HOME) : on accepte ses licences et on
+      # ajoute la plateforme utilisée par l'appli si elle manque.
+      - name: SDK Android
+        run: |
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$sdk" >> "$GITHUB_ENV"
+          gestionnaire=$(ls -d "$sdk"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)
+          echo "Outil : $gestionnaire"
+          yes | "$gestionnaire" --licenses > /dev/null || true
+          "$gestionnaire" "platforms;android-36" "build-tools;36.0.0" "platform-tools" > /dev/null
+          ls "$sdk/platforms"
 
       - uses: gradle/actions/setup-gradle@v4
 
