@@ -1,0 +1,8 @@
+<resources>
+    <!-- Thème de la fenêtre avant Compose (écran de lancement) : fond nuit de Flux, pas de barre d'action. -->
+    <style name="Theme.FluxLite" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/fond</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

@@ -1,0 +1,89 @@
+# Bouton « Publier FluxLite » : onglet Actions › Publier FluxLite › Run workflow.
+# Avant : augmentez versionCode et versionName dans app/build.gradle.kts.
+# Le robot compile l'APK signé, le publie dans les releases de ce dépôt (tag v1.2.0…), puis demande au site de se
+# mettre à jour (secret SITE_TOKEN, facultatif : sinon le site se met à jour tout seul dans l'heure).
+# Les téléphones voient la nouvelle version à la prochaine ouverture de FluxLite.
+name: Publier FluxLite
+
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: "Nouveautés de cette version (affichées dans l'application et sur le site)"
+        required: true
+        type: string
+      obligatoire:
+        description: "Mise à jour indispensable"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Lire la version
+        id: v
+        run: python3 .github/scripts/fluxlite.py version
+
+      - name: Vérifier que la version n'existe pas déjà
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.v.outputs.tag }}" >/dev/null 2>&1; then
+            echo "::error::FluxLite ${{ steps.v.outputs.nom }} est déjà publiée. Augmentez versionCode et versionName dans app/build.gradle.kts."
+            exit 1
+          fi
+
+      - name: Clé de signature
+        env:
+          MOT_DE_PASSE: ${{ secrets.FLUXLITE_SIGNATURE }}
+        run: bash .github/scripts/cle_signature.sh "$RUNNER_TEMP/fluxlite.p12"
+
+      - name: Compiler l'APK
+        env:
+          FLUXLITE_KEYSTORE: ${{ runner.temp }}/fluxlite.p12
+          FLUXLITE_KEYSTORE_PASSWORD: ${{ secrets.FLUXLITE_SIGNATURE }}
+          FLUXLITE_KEY_ALIAS: fluxlite
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease
+
+      - name: Préparer la publication
+        env:
+          NOTES: ${{ inputs.notes }}
+          OBLIGATOIRE: ${{ inputs.obligatoire }}
+        run: python3 .github/scripts/fluxlite.py publier
+
+      - name: Publier la version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          gh release create "${{ steps.v.outputs.tag }}" "publication/${{ steps.v.outputs.apk }}" publication/version.json \
+            --title "FluxLite ${{ steps.v.outputs.nom }}" --notes "$NOTES" --target "$(git rev-parse HEAD)"
+          rm -f "$RUNNER_TEMP/fluxlite.p12"
+
+      - name: Mettre le site à jour
+        env:
+          GH_TOKEN: ${{ secrets.SITE_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::notice::Pas de secret SITE_TOKEN : le site prendra la nouvelle version tout seul dans l'heure."
+          else
+            gh workflow run site.yml --repo Daoakashi/flux-web \
+              || echo "::warning::Le site n'a pas pu être relancé : il se mettra à jour tout seul dans l'heure."
+          fi
