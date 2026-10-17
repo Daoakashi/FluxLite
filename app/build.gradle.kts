@@ -1,3 +1,4 @@
+import java.io.File
 import java.util.Properties
 
 plugins {
@@ -42,7 +43,7 @@ android {
         if (signature.isNotEmpty()) {
             create("publication") {
                 val chemin = signature.getProperty("storeFile")
-                storeFile = if (java.io.File(chemin).isAbsolute) java.io.File(chemin) else rootProject.file(chemin)
+                storeFile = File(chemin).let { if (it.isAbsolute) it else rootProject.file(chemin) }
                 storePassword = signature.getProperty("storePassword")
                 keyAlias = signature.getProperty("keyAlias")
                 keyPassword = signature.getProperty("keyPassword")
