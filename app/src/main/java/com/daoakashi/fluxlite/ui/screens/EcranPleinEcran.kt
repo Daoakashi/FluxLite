@@ -124,11 +124,11 @@ fun EcranPleinEcran(vm: AppViewModel, camInitiale: Camera, fermer: () -> Unit) {
     // Vidéo : flux MJPEG, reprise automatique en cas de coupure.
     LaunchedEffect(cam.id) {
         while (true) {
-            val api = vm.apiCourante() ?: break
+            val (api, idBrut) = vm.apiPour(cam.id) ?: break
             try {
                 var n = 0
                 var t0 = System.currentTimeMillis()
-                api.flux(cam.id, fps = 15, largeur = 1600).collect { f ->
+                api.flux(idBrut, fps = 15, largeur = 1600).collect { f ->
                     val b = f.image.asImageBitmap()
                     image = b
                     Vignettes.images[cam.id] = b

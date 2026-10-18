@@ -77,3 +77,22 @@ Avec un PC Flux 0.9 ou plus récent, un compte autorisé (clic droit sur le comp
 - d'activer ou de désactiver les notifications de Flux : mails, WhatsApp, Telegram, SMS, appel, ntfy, Discord et webhook.
 
 Chaque action est notée dans le journal de Flux.
+
+## Plusieurs PC Flux (1.3.0)
+
+FluxLite peut suivre plusieurs PC Flux à la fois, par exemple un directeur et tous ses établissements.
+
+- **Ajouter un serveur** : Compte › Serveurs Flux › « Ajouter un PC Flux », puis scanner son QR code.
+  - Si le responsable a transféré votre compte (Flux › FluxLite › Transférer), connectez-vous avec le même mail et le même mot de passe.
+  - Sinon, « Créer avec mes informations » reprend vos nom, prénom, mail et société.
+- **Caméras** : celles de tous les serveurs s'affichent ensemble, avec le nom du serveur. Les puces en haut permettent de voir « Tous les serveurs » ou seulement un ou plusieurs.
+- **Journal et alertes** : regroupés pour les serveurs affichés. Chaque serveur a sa propre écoute des alertes.
+- **Contrôle à distance** : choix du serveur piloté. « Appliquer aussi aux autres serveurs » envoie le même réglage partout.
+- **Compte** : il s'applique au serveur courant. Touchez un autre serveur dans Compte › Serveurs Flux pour gérer votre compte là-bas.
+
+Limite actuelle : hors WiFi, les serveurs autres que le courant passent par le relais publié sur le site. Ils n'utilisent pas le relais propre à un PC Flux.
+
+## Licence, juridique et IA
+
+FluxLite est un logiciel libre de DMS Security sous licence GNU AGPL-3.0 (`LICENSE`), avec une permission supplémentaire pour le lecteur de QR code de Google (`juridique/LICENCES-TIERCES.md`). Il a été conçu et développé avec l'aide d'outils d'intelligence artificielle, sous la direction et la vérification de son auteur. Textes juridiques : [`juridique/`](juridique/LISEZMOI.md). Feedback : Compte › Feedback, ou dms.security.list@gmail.com.
+

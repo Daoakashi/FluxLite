@@ -69,7 +69,11 @@ fun articlesCgu(info: InfoServeur?): List<Pair<String, String>> {
             "effacement, vous opposer à leur traitement ou en demander la limitation. L'onglet Compte permet d'exporter " +
             "vos données et de supprimer votre compte. Pour toute autre demande, adressez-vous au responsable$contact. " +
             "Vous pouvez aussi saisir l'autorité de protection des données (APD en Belgique, CNIL en France).",
-        "9. Évolution" to "Ces conditions peuvent évoluer ; la nouvelle version vous sera présentée et devra être " +
+        "9. Feedback" to "Le bouton Feedback ouvre votre messagerie ou GitHub avec un message que vous relisez avant de " +
+            "l'envoyer ; rien n'est envoyé automatiquement. Il est adressé à l'éditeur (DMS Security), pas au responsable du serveur.",
+        "10. Logiciel libre" to "FluxLite est un logiciel libre (GNU AGPL-3.0) fourni sans garantie, développé avec l'aide " +
+            "d'outils d'intelligence artificielle. Code source : github.com/Daoakashi/FluxLite.",
+        "11. Évolution" to "Ces conditions peuvent évoluer ; la nouvelle version vous sera présentée et devra être " +
             "acceptée pour continuer. Version $CGU_VERSION.",
     )
 }

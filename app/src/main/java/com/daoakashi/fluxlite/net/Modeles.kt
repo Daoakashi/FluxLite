@@ -68,6 +68,8 @@ data class Camera(
     val fps: Double = 0.0,
     val resolution: String? = null,
     val detection: Boolean = true,
+    /** Nom du PC Flux, affiché quand plusieurs serveurs sont suivis (rempli par l'application). */
+    val serveur: String = "",
 ) {
     val enDirect get() = etat == "direct" || etat == "alerte"
 }
@@ -106,6 +108,9 @@ data class Evenement(
     val niveau: String = "alerte",
     val prioritaire: Boolean = false,
     val photo: Boolean = false,
+    /** Clé et nom du PC Flux d'origine (remplis par l'application quand plusieurs serveurs sont suivis). */
+    val srv: String = "",
+    val serveur: String = "",
 )
 
 @Serializable

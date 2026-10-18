@@ -101,7 +101,9 @@ fun EcranJournal(vm: AppViewModel, surOuvrir: (Camera) -> Unit, basDePage: andro
         LazyRow(contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item { Filtre("Toutes", j.filtreCamera == null) { vm.chargerJournal(camera = null) } }
             items(ec.cameras, key = { it.id }) { cam ->
-                Filtre(cam.nom, j.filtreCamera == cam.id) { vm.chargerJournal(camera = cam.id) }
+                Filtre(if (cam.serveur.isNotBlank()) "${cam.nom} · ${cam.serveur}" else cam.nom, j.filtreCamera == cam.id) {
+                    vm.chargerJournal(camera = cam.id)
+                }
             }
         }
         PullToRefreshBox(isRefreshing = j.chargement && j.evenements.isEmpty(), onRefresh = { vm.chargerJournal() },
@@ -124,7 +126,7 @@ fun EcranJournal(vm: AppViewModel, surOuvrir: (Camera) -> Unit, basDePage: andro
                                     modifier = Modifier.padding(start = 6.dp, top = 16.dp, bottom = 6.dp))
                             }
                         }
-                        item(key = e.id) {
+                        item(key = "${e.srv}-${e.id}") {
                             LigneEvenement(vm, e, premier = i == 0, dernier = i == j.evenements.lastIndex,
                                 surPhoto = { photo = e },
                                 surCamera = { ec.cameras.firstOrNull { it.id == e.cameraId }?.let(surOuvrir) })
@@ -155,8 +157,8 @@ private fun Filtre(texte: String, choisi: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun photoEvenement(vm: AppViewModel, e: Evenement): ImageBitmap? {
-    val image by produceState<ImageBitmap?>(null, e.id) {
-        if (e.photo) value = runCatching { vm.apiCourante()?.photo(e.id)?.asImageBitmap() }.getOrNull()
+    val image by produceState<ImageBitmap?>(null, e.srv, e.id) {
+        if (e.photo) value = runCatching { vm.apiDe(e.srv)?.photo(e.id)?.asImageBitmap() }.getOrNull()
     }
     return image
 }
@@ -198,7 +200,8 @@ private fun LigneEvenement(vm: AppViewModel, e: Evenement, premier: Boolean, der
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icone(Ico.CAMERAS, taille = 14.dp, couleur = c.texte3)
                     Spacer(Modifier.width(5.dp))
-                    Text(e.camera, style = MaterialTheme.typography.bodySmall, color = c.texte3, maxLines = 1)
+                    Text(if (e.serveur.isNotBlank()) "${e.camera} · ${e.serveur}" else e.camera,
+                        style = MaterialTheme.typography.bodySmall, color = c.texte3, maxLines = 1)
                 }
             }
             if (e.photo) {

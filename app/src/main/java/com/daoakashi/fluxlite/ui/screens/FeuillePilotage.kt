@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import com.daoakashi.fluxlite.data.idCamera
 import com.daoakashi.fluxlite.ui.AppViewModel
 import com.daoakashi.fluxlite.ui.icons.Ico
 import com.daoakashi.fluxlite.ui.icons.Icone
@@ -52,7 +53,16 @@ fun FeuillePilotage(vm: AppViewModel, fermer: () -> Unit) {
     val c = Flux.c
     val p by vm.pilotage.collectAsState()
     val etat by vm.etat.collectAsState()
+    val srv by vm.pilotageSrv.collectAsState()
+    val tous by vm.piloterTous.collectAsState()
     LaunchedEffect(Unit) { vm.chargerPilotage() }
+    // PC Flux pilotables : le serveur courant ("") et les autres serveurs suivis qui ont une session
+    val serveurs = buildList {
+        etat?.serveur?.let { add("" to it.nom) }
+        etat?.autres?.filter { it.jeton != null }?.forEach { add(it.serveur.cle to it.serveur.nom) }
+    }
+    val cleServeur = srv.ifEmpty { etat?.serveur?.cle.orEmpty() }
+    val nomServeur = serveurs.firstOrNull { it.first == srv }?.second ?: etat?.serveur?.nom ?: "PC Flux"
 
     ModalBottomSheet(fermer, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = c.panneau) {
         Column(Modifier.padding(horizontal = 22.dp).padding(bottom = 28.dp).verticalScroll(rememberScrollState())) {
@@ -63,9 +73,18 @@ fun FeuillePilotage(vm: AppViewModel, fermer: () -> Unit) {
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text("Contrôle à distance", style = MaterialTheme.typography.headlineSmall, color = c.texte)
-                    Text(etat?.serveur?.nom ?: "PC Flux", style = MaterialTheme.typography.bodySmall, color = c.texte2)
+                    Text(nomServeur, style = MaterialTheme.typography.bodySmall, color = c.texte2)
                 }
                 if (p.chargement) CircularProgressIndicator(Modifier.size(20.dp), color = c.accent, strokeWidth = 2.dp)
+            }
+            if (serveurs.size > 1) {
+                Spacer(Modifier.height(14.dp))
+                Pilules(serveurs, srv, { vm.choisirPilotage(it) })
+                Spacer(Modifier.height(4.dp))
+                LigneReglage(Ico.SERVEUR, "Appliquer aussi aux autres serveurs",
+                    "Détection et notifications : le même réglage est envoyé à tous vos PC Flux") {
+                    Interrupteur(tous) { vm.piloterTous.value = it }
+                }
             }
             val e = p.etat
             if (e == null) {
@@ -93,7 +112,7 @@ fun FeuillePilotage(vm: AppViewModel, fermer: () -> Unit) {
                             cam.detection -> if (cam.enMarche) "Détection active" else "Caméra arrêtée sur le PC"
                             else -> "Détection désactivée pour cette caméra"
                         }) {
-                        Interrupteur(cam.detection) { vm.piloter("camera.detection", it, cam.id) }
+                        Interrupteur(cam.detection) { vm.piloter("camera.detection", it, idCamera(cleServeur, cam.id)) }
                     }
                 }
             }

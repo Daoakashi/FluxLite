@@ -51,6 +51,8 @@ fun EcranAppairage(vm: AppViewModel) {
     val contexte = LocalContext.current
     val occupe by vm.occupe.collectAsState()
     val recu by vm.appairageRecu.collectAsState()
+    val etat by vm.etat.collectAsState()
+    val ajout = etat?.ajoutDepuis != null
     var adresse by rememberSaveable { mutableStateOf("") }
     var port by rememberSaveable { mutableStateOf("47810") }
     var cle by rememberSaveable { mutableStateOf("") }
@@ -92,9 +94,11 @@ fun EcranAppairage(vm: AppViewModel) {
             Spacer(Modifier.height(28.dp))
             LogoVagues(taille = 64.dp)
             Spacer(Modifier.height(22.dp))
-            Text("Bienvenue sur FluxLite", style = MaterialTheme.typography.displaySmall, color = c.texte)
+            Text(if (ajout) "Ajouter un PC Flux" else "Bienvenue sur FluxLite", style = MaterialTheme.typography.displaySmall,
+                color = c.texte)
             Spacer(Modifier.height(8.dp))
-            Text("Reliez ce téléphone au PC Flux qui surveille vos caméras. Dans Flux, ouvrez la page « FluxLite » : " +
+            Text((if (ajout) "Ses caméras et ses alertes s'afficheront avec celles de vos autres serveurs. " else
+                "Reliez ce téléphone au PC Flux qui surveille vos caméras. ") + "Dans Flux, ouvrez la page « FluxLite » : " +
                 "le QR code et la clé du serveur y sont affichés.", style = MaterialTheme.typography.bodyLarge, color = c.texte2)
             Spacer(Modifier.height(28.dp))
             Bouton("Scanner le QR code", ::scanner, Modifier.fillMaxWidth(), icone = Ico.QR, chargement = occupe)
@@ -117,6 +121,10 @@ fun EcranAppairage(vm: AppViewModel) {
             Bouton("Se connecter au serveur", {
                 connecter(adresse.split(',', ' ').filter { it.isNotBlank() }, port.toIntOrNull() ?: 47810, cle)
             }, Modifier.fillMaxWidth(), StyleBouton.DISCRET, Ico.SERVEUR, chargement = occupe)
+            if (ajout) {
+                Spacer(Modifier.height(10.dp))
+                Bouton("Annuler : revenir à mes serveurs", { vm.annulerAjout() }, Modifier.fillMaxWidth(), StyleBouton.FANTOME, Ico.RETOUR)
+            }
             Spacer(Modifier.height(26.dp))
             Carte {
                 Row(verticalAlignment = Alignment.Top) {

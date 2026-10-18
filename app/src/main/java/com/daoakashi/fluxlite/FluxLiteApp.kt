@@ -89,4 +89,19 @@ class FluxLiteApp : Application() {
         }
         return Api(s, j)
     }
+
+    /** Client d'un PC Flux suivi (courant ou autre), ou null s'il n'a pas de session. */
+    suspend fun apiDe(cle: String): Api? {
+        val e = reglages.maintenant()
+        if (cle.isEmpty() || e.serveur?.cle == cle) return api()
+        val autre = e.autres.firstOrNull { it.serveur.cle == cle } ?: return null
+        return Api(autre.serveur, autre.jeton ?: return null)
+    }
+
+    /** Pour un identifiant de caméra « clé|id » : le client de son serveur et l'identifiant à lui envoyer. */
+    suspend fun apiPour(idCamera: String): Pair<Api, String>? {
+        val i = idCamera.indexOf('|')
+        if (i < 0) return api()?.let { it to idCamera }
+        return apiDe(idCamera.substring(0, i))?.let { it to idCamera.substring(i + 1) }
+    }
 }

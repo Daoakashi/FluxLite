@@ -66,7 +66,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private enum class Dialogue { PROFIL, MOT_DE_PASSE, SUPPRESSION, DECONNEXION, SERVEUR, CGU }
+private enum class Dialogue { PROFIL, MOT_DE_PASSE, SUPPRESSION, DECONNEXION, SERVEUR, CGU, FEEDBACK }
 
 private fun date(t: Double?): String = if (t == null || t <= 0) "—" else
     SimpleDateFormat("d MMM yyyy à HH:mm", Locale.FRANCE).format(Date((t * 1000).toLong()))
@@ -83,6 +83,7 @@ fun EcranCompte(vm: AppViewModel, basDePage: androidx.compose.ui.unit.Dp) {
     val maj by MiseAJour.etat.collectAsState()
     val portee = rememberCoroutineScope()
     var dialogue by remember { mutableStateOf<Dialogue?>(null) }
+    var autreChoisi by remember { mutableStateOf<com.daoakashi.fluxlite.data.ServeurEnregistre?>(null) }
     val e = etat ?: return
 
     // Permissions et batterie relues à chaque retour sur l'écran
@@ -195,7 +196,29 @@ fun EcranCompte(vm: AppViewModel, basDePage: androidx.compose.ui.unit.Dp) {
                     couleur = c.danger, onClick = { dialogue = Dialogue.SUPPRESSION })
             }
 
-            Section("Serveur")
+            Section("Serveurs Flux")
+            Carte {
+                Text("Suivez plusieurs établissements : leurs caméras et leurs alertes s'affichent ensemble. Chaque PC Flux " +
+                    "garde ses propres comptes ; touchez un serveur pour gérer votre compte ou le piloter.",
+                    style = MaterialTheme.typography.bodySmall, color = c.texte2, modifier = Modifier.padding(start = 4.dp, bottom = 4.dp))
+                e.serveur?.let { s ->
+                    LigneReglage(Ico.SERVEUR, s.nom, "Serveur courant · compte et pilotage ci-dessous") {
+                        if (e.autres.any { it.jeton != null }) Interrupteur(e.courantAffiche) { vm.afficherServeur(s.cle, it) }
+                    }
+                }
+                for (a in e.autres) {
+                    LigneReglage(Ico.SERVEUR, a.serveur.nom,
+                        if (a.jeton != null) (if (a.affiche) "Caméras affichées" else "Masqué") + " · toucher pour le gérer"
+                        else "Déconnecté · toucher pour vous reconnecter",
+                        couleur = if (a.jeton != null) c.texte else c.attention, onClick = { autreChoisi = a }) {
+                        if (a.jeton != null) Interrupteur(a.affiche) { vm.afficherServeur(a.serveur.cle, it) }
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Bouton("Ajouter un PC Flux", { vm.ajouterServeur() }, Modifier.fillMaxWidth(), StyleBouton.DISCRET, Ico.PLUS)
+            }
+
+            Section("Serveur courant")
             Carte {
                 LigneReglage(Ico.SERVEUR, e.serveur?.nom ?: "Flux",
                     (if (e.serveur?.hote.isNullOrBlank()) "Par Internet" else "${e.serveur?.hote}:${e.serveur?.port}") +
@@ -214,6 +237,8 @@ fun EcranCompte(vm: AppViewModel, basDePage: androidx.compose.ui.unit.Dp) {
 
             Section("Application")
             Carte {
+                LigneReglage(Ico.MESSAGE, "Feedback", "Une idée, un problème, une question ? Écrivez-nous",
+                    onClick = { dialogue = Dialogue.FEEDBACK })
                 LigneReglage(Ico.GLOBE, "Site de Flux", BuildConfig.SITE_URL.removePrefix("https://"), onClick = {
                     runCatching { contexte.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(BuildConfig.SITE_URL))) }
                 })
@@ -239,7 +264,9 @@ fun EcranCompte(vm: AppViewModel, basDePage: androidx.compose.ui.unit.Dp) {
             }
             Spacer(Modifier.height(22.dp))
             Bouton("Se déconnecter", { dialogue = Dialogue.DECONNEXION }, Modifier.fillMaxWidth(), StyleBouton.DANGER, Ico.SORTIE)
-            Text("FluxLite · application compagnon de Flux\nConnexion chiffrée, liée à la clé de votre serveur",
+            Text("FluxLite · application compagnon de Flux\nConnexion chiffrée, liée à la clé de votre serveur\n" +
+                "© 2026 DMS Security · logiciel libre (GNU AGPL-3.0), sans garantie\nDéveloppé avec l'aide d'outils " +
+                "d'intelligence artificielle. Aucune image n'est envoyée à un service d'IA.",
                 style = MaterialTheme.typography.bodySmall, color = c.texte3, textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().padding(top = 18.dp))
         }
@@ -253,13 +280,35 @@ fun EcranCompte(vm: AppViewModel, basDePage: androidx.compose.ui.unit.Dp) {
         Dialogue.SUPPRESSION -> DialogueSuppression({ dialogue = null }) { m -> vm.supprimerCompte(m); dialogue = null }
         Dialogue.DECONNEXION -> Confirmation("Se déconnecter ?", "Vous ne recevrez plus d'alertes sur ce téléphone jusqu'à " +
             "votre prochaine connexion.", "Se déconnecter", { dialogue = null }) { vm.deconnexion(); dialogue = null }
-        Dialogue.SERVEUR -> Confirmation("Changer de serveur ?", "FluxLite oubliera ce serveur, sa clé et votre session. " +
-            "Il faudra scanner à nouveau un QR code.", "Changer de serveur", { dialogue = null }) { vm.oublierServeur(); dialogue = null }
+        Dialogue.SERVEUR -> Confirmation("Retirer ce serveur ?", "FluxLite oubliera ce serveur, sa clé et votre session " +
+            "(votre compte là-bas n'est pas supprimé). Pour le retrouver, il faudra scanner à nouveau son QR code.",
+            "Retirer", { dialogue = null }) { vm.oublierServeur(); dialogue = null }
+        Dialogue.FEEDBACK -> DialogueFeedback { dialogue = null }
         Dialogue.CGU -> androidx.compose.ui.window.Dialog({ dialogue = null },
             androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
             EcranCgu(info, {}, null, surFermer = { dialogue = null })
         }
         null -> Unit
+    }
+    autreChoisi?.let { a ->
+        AlertDialog(
+            onDismissRequest = { autreChoisi = null }, containerColor = c.panneau,
+            title = { Text(a.serveur.nom, color = c.texte) },
+            text = {
+                Text(if (a.jeton != null) "Utiliser ce PC Flux comme serveur courant pour gérer votre compte et le piloter ? " +
+                    "Ses caméras et ses alertes restent affichées avec les autres."
+                else "La session sur ce PC Flux a expiré. Reconnectez-vous avec votre mail et votre mot de passe.", color = c.texte2)
+            },
+            confirmButton = {
+                Row {
+                    TextButton({ vm.retirerServeur(a.serveur.cle); autreChoisi = null }) { Text("Retirer", color = c.danger) }
+                    TextButton({ vm.basculerVers(a.serveur.cle); autreChoisi = null }) {
+                        Text(if (a.jeton != null) "Utiliser" else "Se reconnecter")
+                    }
+                }
+            },
+            dismissButton = { TextButton({ autreChoisi = null }) { Text("Annuler", color = c.texte2) } },
+        )
     }
 }
 

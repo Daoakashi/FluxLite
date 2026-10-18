@@ -73,6 +73,7 @@ fun EcranConnexion(vm: AppViewModel) {
     val etat by vm.etat.collectAsState()
     val info by vm.info.collectAsState()
     val occupe by vm.occupe.collectAsState()
+    val profilConnu by vm.profilConnu.collectAsState()
     var onglet by rememberSaveable { mutableStateOf(0) }
     var attente by rememberSaveable { mutableStateOf<String?>(null) }
 
@@ -99,19 +100,38 @@ fun EcranConnexion(vm: AppViewModel) {
             Pilules(listOf(0 to "Se connecter", 1 to "Créer un compte"), onglet, { onglet = it; attente = null })
             Spacer(Modifier.height(20.dp))
             AnimatedContent(onglet, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "onglet") { o ->
-                if (o == 0) FormulaireConnexion(vm, occupe)
+                if (o == 0) FormulaireConnexion(vm, occupe, profilConnu?.mail.orEmpty())
                 else if (attente != null) CompteEnAttente(attente!!) { onglet = 0; attente = null }
-                else FormulaireInscription(vm, occupe, info?.inscription != false) { message, actif -> if (!actif) attente = message }
+                else FormulaireInscription(vm, occupe, info?.inscription != false, profilConnu) { message, actif -> if (!actif) attente = message }
+            }
+            // Compte sur un autre PC Flux : ses informations sont reprises pour créer le compte ici en un geste
+            val p = profilConnu
+            if (onglet == 0 && p != null && info?.inscription != false) {
+                Spacer(Modifier.height(12.dp))
+                Bouton("Pas de compte ici ? Créer avec mes informations", { onglet = 1; attente = null },
+                    Modifier.fillMaxWidth(), StyleBouton.DISCRET, Ico.PERSONNE)
+                Text("${p.prenom} ${p.nom} · ${p.mail}. Si votre responsable a transféré votre compte, connectez-vous " +
+                    "simplement avec le même mot de passe.", style = MaterialTheme.typography.bodySmall, color = c.texte3,
+                    modifier = Modifier.padding(top = 6.dp))
             }
             Spacer(Modifier.height(24.dp))
-            Bouton("Changer de serveur", { vm.oublierServeur() }, Modifier.fillMaxWidth(), StyleBouton.FANTOME, Ico.SERVEUR)
+            val e = etat
+            if (e != null && (e.ajoutDepuis != null || e.autres.any { it.jeton != null })) {
+                Bouton("Retour à mes autres serveurs", {
+                    if (e.ajoutDepuis != null) vm.annulerAjout()
+                    else e.autres.firstOrNull { it.jeton != null }?.let { vm.basculerVers(it.serveur.cle) }
+                }, Modifier.fillMaxWidth(), StyleBouton.DISCRET, Ico.RETOUR)
+                Spacer(Modifier.height(8.dp))
+            }
+            Bouton(if (e?.ajoutDepuis != null) "Choisir un autre serveur" else "Changer de serveur", { vm.oublierServeur() },
+                Modifier.fillMaxWidth(), StyleBouton.FANTOME, Ico.SERVEUR)
         }
     }
 }
 
 @Composable
-private fun FormulaireConnexion(vm: AppViewModel, occupe: Boolean) {
-    var mail by rememberSaveable { mutableStateOf("") }
+private fun FormulaireConnexion(vm: AppViewModel, occupe: Boolean, mailConnu: String) {
+    var mail by rememberSaveable(mailConnu) { mutableStateOf(mailConnu) }
     var mdp by rememberSaveable { mutableStateOf("") }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Champ(mail, { mail = it.trim() }, "Adresse mail", clavier = KeyboardType.Email)
@@ -125,17 +145,18 @@ private fun FormulaireConnexion(vm: AppViewModel, occupe: Boolean) {
 }
 
 @Composable
-private fun FormulaireInscription(vm: AppViewModel, occupe: Boolean, ouvertes: Boolean, surCree: (String, Boolean) -> Unit) {
+private fun FormulaireInscription(vm: AppViewModel, occupe: Boolean, ouvertes: Boolean,
+                                  connu: com.daoakashi.fluxlite.net.Profil?, surCree: (String, Boolean) -> Unit) {
     val c = Flux.c
     if (!ouvertes) {
         MessageVide(Ico.CADENAS, "Inscriptions fermées", "Ce serveur n'accepte pas les inscriptions depuis le téléphone. " +
             "Demandez à votre responsable de créer votre compte dans Flux.")
         return
     }
-    var prenom by rememberSaveable { mutableStateOf("") }
-    var nom by rememberSaveable { mutableStateOf("") }
-    var mail by rememberSaveable { mutableStateOf("") }
-    var societe by rememberSaveable { mutableStateOf("") }
+    var prenom by rememberSaveable(connu?.id) { mutableStateOf(connu?.prenom.orEmpty()) }
+    var nom by rememberSaveable(connu?.id) { mutableStateOf(connu?.nom.orEmpty()) }
+    var mail by rememberSaveable(connu?.id) { mutableStateOf(connu?.mail.orEmpty()) }
+    var societe by rememberSaveable(connu?.id) { mutableStateOf(connu?.let { it.societe.ifBlank { it.entreprise.orEmpty() } }.orEmpty()) }
     var mdp by rememberSaveable { mutableStateOf("") }
     var mdp2 by rememberSaveable { mutableStateOf("") }
     val (force, conseil) = forceMotDePasse(mdp)

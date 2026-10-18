@@ -136,8 +136,10 @@ fun EcranCameras(vm: AppViewModel, surOuvrir: (Camera) -> Unit, basDePage: andro
                 Text("Caméras", style = MaterialTheme.typography.headlineMedium, color = c.texte)
                 val direct = ec.cameras.count { it.enDirect }
                 val presences = ec.cameras.sumOf { it.personnes }
+                val nbServeurs = e.serveursAffiches
                 Text(
-                    "${e.serveur?.nom ?: "Flux"}" + (if (route == "internet") " · par Internet" else "") +
+                    (if (nbServeurs > 1) "$nbServeurs serveurs" else "${e.serveur?.nom ?: "Flux"}" +
+                        (if (route == "internet") " · par Internet" else "")) +
                         " · $direct en direct" + if (presences > 0) " · $presences présence(s)" else "",
                     style = MaterialTheme.typography.bodySmall, color = c.texte2, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
@@ -173,6 +175,27 @@ fun EcranCameras(vm: AppViewModel, surOuvrir: (Camera) -> Unit, basDePage: andro
             }
             Spacer(Modifier.width(8.dp))
             BoutonIcone({ feuilleCloche = true }, description = "Alertes") { IconeCloche(e.cloche) }
+        }
+
+        // --- serveurs affichés : tous, un ou plusieurs (quand plusieurs PC Flux sont suivis) ----------------
+        val serveurs = buildList {
+            e.serveur?.takeIf { e.jeton != null }?.let { add(Triple(it.cle, it.nom, e.courantAffiche)) }
+            e.autres.filter { it.jeton != null }.forEach { add(Triple(it.serveur.cle, it.serveur.nom, it.affiche)) }
+        }
+        if (serveurs.size > 1) {
+            val tous = serveurs.all { it.third }
+            LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(bottom = 8.dp)) {
+                item(key = "tous") {
+                    PuceServeur("Tous les serveurs", tous) { serveurs.forEach { vm.afficherServeur(it.first, true) } }
+                }
+                items(serveurs, key = { it.first }) { (cle, nom, affiche) ->
+                    PuceServeur(nom, affiche && !tous) {
+                        if (tous) serveurs.forEach { vm.afficherServeur(it.first, it.first == cle) }
+                        else if (!(affiche && serveurs.count { it.third } == 1)) vm.afficherServeur(cle, !affiche)
+                    }
+                }
+            }
         }
 
         // --- ruban d'activité : une capsule par caméra, l'état d'un coup d'œil --------------------------
@@ -259,6 +282,16 @@ fun Pulsation(couleur: Color, actif: Boolean, taille: androidx.compose.ui.unit.D
     Box(Modifier.size(taille).alpha(a).clip(CircleShape).background(couleur))
 }
 
+/** Puce d'un PC Flux dans la barre des serveurs (choisie = remplie). */
+@Composable
+private fun PuceServeur(texte: String, choisie: Boolean, onClick: () -> Unit) {
+    val c = Flux.c
+    Text(texte, style = MaterialTheme.typography.labelLarge, color = if (choisie) Color.White else c.texte2, maxLines = 1,
+        modifier = Modifier.clip(RoundedCornerShape(50)).background(if (choisie) c.accent else c.surface)
+            .border(1.dp, if (choisie) c.accent else c.trait, RoundedCornerShape(50))
+            .clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 8.dp))
+}
+
 @Composable
 fun ImageEnDirect(vm: AppViewModel, cam: Camera, largeurImage: Int, intervalle: Long): ImageBitmap? {
     var image by remember(cam.id) { mutableStateOf(Vignettes.images[cam.id]) }
@@ -266,9 +299,9 @@ fun ImageEnDirect(vm: AppViewModel, cam: Camera, largeurImage: Int, intervalle: 
     LaunchedEffect(cam.id, cam.enDirect, largeurImage, intervalle) {
         if (!cam.enDirect) return@LaunchedEffect
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-            val api = vm.apiCourante() ?: return@repeatOnLifecycle
+            val (api, idBrut) = vm.apiPour(cam.id) ?: return@repeatOnLifecycle
             while (true) {
-                runCatching { api.image(cam.id, largeurImage) }.getOrNull()?.let {
+                runCatching { api.image(idBrut, largeurImage) }.getOrNull()?.let {
                     val b = it.asImageBitmap()
                     Vignettes.images[cam.id] = b
                     image = b
@@ -339,6 +372,10 @@ private fun CarteCamera(
                 verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(cam.nom, style = MaterialTheme.typography.titleSmall, color = c.texte, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (cam.serveur.isNotBlank()) {
+                        Text(cam.serveur, style = MaterialTheme.typography.labelSmall, color = c.texte3, maxLines = 1,
+                            overflow = TextOverflow.Ellipsis)
+                    }
                     if (mode == Affichage.FIL) {
                         Text(listOfNotNull(cam.resolution, if (cam.enDirect) String.format(Locale.FRANCE, "%.0f img/s", cam.fps) else null)
                             .joinToString(" · ").ifEmpty { "Hors ligne" },

@@ -8,6 +8,8 @@ import com.daoakashi.fluxlite.FluxLiteApp
 import com.daoakashi.fluxlite.data.Affichage
 import com.daoakashi.fluxlite.data.Etat
 import com.daoakashi.fluxlite.data.ModeAlertes
+import com.daoakashi.fluxlite.data.ServeurEnregistre
+import com.daoakashi.fluxlite.data.idCamera
 import com.daoakashi.fluxlite.net.Api
 import com.daoakashi.fluxlite.net.Camera
 import com.daoakashi.fluxlite.net.CleServeur
@@ -123,6 +125,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private var ecouteLocale: Job? = null
 
+    /** Profil du compte sur le serveur précédent : repris pour créer le compte sur un nouveau serveur. */
+    private val _profilConnu = MutableStateFlow<Profil?>(null)
+    val profilConnu = _profilConnu.asStateFlow()
+
     init {
         viewModelScope.launch {
             app.sessionPerdue.collect { m ->
@@ -212,10 +218,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val s = reglages.maintenant().serveur ?: return@lancer
         val r = Api(s).connexion(mail.trim(), motDePasse)
         reglages.enregistrerJeton(r.jeton)
+        reglages.terminerAjout()
         var p = r.compte
         if (p.cguVersion != CGU_VERSION) p = Api(s, r.jeton).modifierProfil(cguVersion = CGU_VERSION)
         _profil.value = p
         resetDernier()  // repartir du présent : pas d'avalanche d'anciennes alertes à la connexion
+        redemarrerVeille()
     }
 
     private suspend fun resetDernier() {
@@ -239,6 +247,72 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _profil.value = null
         _cameras.value = EtatCameras()
         _journal.value = EtatJournal()
+        // D'autres serveurs suivis ont encore une session : le premier devient le serveur courant
+        reglages.maintenant().autres.firstOrNull { it.jeton != null }?.let { basculer(it.serveur.cle) }
+    }
+
+    // --- plusieurs PC Flux --------------------------------------------------------------------------
+    /** Ajouter un PC Flux : le serveur courant est mis de côté (avec sa session) le temps de l'appairage. */
+    fun ajouterServeur() = lancer {
+        _profilConnu.value = _profil.value ?: _profilConnu.value
+        reglages.commencerAjout()
+        _profil.value = null
+        _info.value = null
+    }
+
+    fun annulerAjout() = lancer {
+        reglages.annulerAjout()
+        chargerProfil()
+        redemarrerVeille()
+    }
+
+    /** Le serveur `cle` devient le serveur courant (compte, pilotage par défaut). */
+    fun basculerVers(cle: String) = lancer { basculer(cle) }
+
+    private suspend fun basculer(cle: String) {
+        _profilConnu.value = _profil.value ?: _profilConnu.value
+        reglages.basculerVers(cle)
+        _profil.value = null
+        _pilotageSrv.value = ""
+        chargerProfil()
+        rafraichirCameras()
+        redemarrerVeille()
+    }
+
+    fun retirerServeur(cle: String) = lancer {
+        val e = reglages.maintenant()
+        if (e.serveur?.cle == cle) {
+            runCatching { app.api()?.deconnexion() }
+            reglages.oublierServeur()
+            _profil.value = null
+            chargerProfil()
+        } else {
+            e.autres.firstOrNull { it.serveur.cle == cle }?.let { a ->
+                runCatching { if (a.jeton != null) Api(a.serveur, a.jeton).deconnexion() }
+            }
+            reglages.retirerAutre(cle)
+        }
+        rafraichirCameras()
+        redemarrerVeille()
+    }
+
+    fun afficherServeur(cle: String, affiche: Boolean) = viewModelScope.launch {
+        reglages.afficherServeur(cle, affiche)
+        rafraichirCameras()
+        redemarrerVeille()
+    }
+
+    /** Une autre session est refusée par son serveur (expirée, compte suspendu) : on l'oublie et on prévient. */
+    private suspend fun sessionAutrePerdue(a: ServeurEnregistre) {
+        reglages.majAutre(a.serveur.cle) { it.copy(jeton = null) }
+        messages.tryEmit("${a.serveur.nom} : session expirée. Reconnectez-le dans Compte › Serveurs Flux.")
+    }
+
+    private fun redemarrerVeille() = viewModelScope.launch {
+        AlertService.arreter(getApplication())
+        ecouteLocale?.cancel()
+        ecouteLocale = null
+        demarrerVeille()
     }
 
     fun chargerProfil() = viewModelScope.launch {
@@ -289,20 +363,55 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Caméras de tous les PC Flux affichés, repérées par « clé du serveur|identifiant ». */
     suspend fun rafraichirCameras() {
-        val api = app.api() ?: return
-        try {
-            val r = api.cameras()
-            _cameras.value = EtatCameras(r.cameras, true, null, !r.entreprise, r.detection, r.pilotage)
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            if (e is ErreurApi && e.code == 401) gererErreur(e)
-            _cameras.value = _cameras.value.copy(charge = true, erreur = messageErreur(e))
+        val e = reglages.maintenant()
+        val courant = e.serveur
+        val autres = e.autres.filter { it.jeton != null && it.affiche }
+        val plusieurs = e.serveursAffiches > 1
+        val liste = mutableListOf<Camera>()
+        var erreur: String? = null
+        var sansEntreprise = false
+        var detection = true
+        var pilotage = false
+        val api = app.api()
+        if (api != null && courant != null && (e.courantAffiche || autres.isEmpty())) {
+            try {
+                val r = api.cameras()
+                sansEntreprise = !r.entreprise
+                detection = r.detection
+                pilotage = r.pilotage
+                liste += r.cameras.map { it.copy(id = idCamera(courant.cle, it.id), serveur = if (plusieurs) courant.nom else "") }
+            } catch (ex: kotlinx.coroutines.CancellationException) {
+                throw ex
+            } catch (ex: Exception) {
+                if (ex is ErreurApi && ex.code == 401) gererErreur(ex)
+                erreur = messageErreur(ex)
+            }
         }
+        for (a in autres) {
+            try {
+                val r = Api(a.serveur, a.jeton).cameras()
+                pilotage = pilotage || r.pilotage
+                liste += r.cameras.map { it.copy(id = idCamera(a.serveur.cle, it.id), serveur = if (plusieurs) a.serveur.nom else "") }
+            } catch (ex: kotlinx.coroutines.CancellationException) {
+                throw ex
+            } catch (ex: Exception) {
+                if (ex is ErreurApi && ex.code == 401) sessionAutrePerdue(a)
+                else if (erreur == null) erreur = "${a.serveur.nom} : ${messageErreur(ex)}"
+            }
+        }
+        _cameras.value = if (liste.isEmpty() && erreur != null) _cameras.value.copy(charge = true, erreur = erreur)
+        else EtatCameras(liste, true, null, sansEntreprise && liste.isEmpty(), detection, pilotage)
     }
 
     suspend fun apiCourante(): Api? = app.api()
+
+    /** Client du serveur d'une caméra (« clé|id ») et l'identifiant à lui envoyer. */
+    suspend fun apiPour(idCamera: String): Pair<Api, String>? = app.apiPour(idCamera)
+
+    /** Client d'un PC Flux suivi (vide = serveur courant). */
+    suspend fun apiDe(cle: String): Api? = app.apiDe(cle)
 
     fun masquer(cameraId: String, masquee: Boolean) = viewModelScope.launch { reglages.masquer(cameraId, masquee) }
     fun basculerMuette(cameraId: String) = viewModelScope.launch { reglages.basculerMuette(cameraId) }
@@ -312,8 +421,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _pilotage = MutableStateFlow(EtatPilotageUi())
     val pilotage = _pilotage.asStateFlow()
 
+    /** Serveur piloté dans la feuille de pilotage (vide = serveur courant). */
+    private val _pilotageSrv = MutableStateFlow("")
+    val pilotageSrv = _pilotageSrv.asStateFlow()
+
+    /** Envoyer aussi les réglages généraux aux autres serveurs suivis. */
+    val piloterTous = MutableStateFlow(false)
+
+    fun choisirPilotage(cle: String) {
+        _pilotageSrv.value = cle
+        _pilotage.value = EtatPilotageUi()
+        chargerPilotage()
+    }
+
+    private suspend fun clePilotage(): String = _pilotageSrv.value.ifEmpty { reglages.maintenant().serveur?.cle.orEmpty() }
+
     fun chargerPilotage() = viewModelScope.launch {
-        val api = app.api() ?: return@launch
+        val api = app.apiDe(_pilotageSrv.value) ?: return@launch
         _pilotage.value = _pilotage.value.copy(chargement = true, erreur = null)
         try {
             _pilotage.value = EtatPilotageUi(api.pilotage())
@@ -327,23 +451,36 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Change un réglage de Flux à distance. L'interrupteur bouge tout de suite ; il revient en arrière si Flux refuse. */
     fun piloter(cle: String, valeur: Boolean, cameraId: String? = null) = viewModelScope.launch {
-        val api = app.api() ?: return@launch
+        val srvPilote = clePilotage()
+        // Commande de caméra : envoyée au serveur de la caméra. Réglage général : au serveur choisi dans la feuille.
+        val (api, idBrut) = if (cameraId != null) app.apiPour(cameraId) ?: return@launch
+        else (app.apiDe(_pilotageSrv.value) ?: return@launch) to null
+        val surCeServeur = api.serveur.cle == srvPilote
         val id = cameraId ?: cle
         val avant = _pilotage.value
-        _pilotage.value = avant.copy(enCours = avant.enCours + id, etat = avant.etat?.let { e ->
+        if (surCeServeur) _pilotage.value = avant.copy(enCours = avant.enCours + id, etat = avant.etat?.let { e ->
             when {
-                cameraId != null -> e.copy(cameras = e.cameras.map { if (it.id == cameraId) it.copy(detection = valeur) else it })
+                cameraId != null -> e.copy(cameras = e.cameras.map { if (it.id == idBrut) it.copy(detection = valeur) else it })
                 cle == "detection.actif" -> e.copy(detection = valeur)
                 else -> e.copy(canaux = e.canaux.map { if (it.cle == cle) it.copy(actif = valeur) else it })
             }
         })
         try {
-            val e = api.piloter(cle, valeur, cameraId)
-            _pilotage.value = EtatPilotageUi(e, enCours = _pilotage.value.enCours - id)
+            val e = api.piloter(cle, valeur, idBrut)
+            if (surCeServeur) _pilotage.value = EtatPilotageUi(e, enCours = _pilotage.value.enCours - id)
+            if (cameraId == null && piloterTous.value) {
+                val etat = reglages.maintenant()
+                val autres = (listOfNotNull(etat.serveur?.cle) + etat.autres.filter { it.jeton != null }.map { it.serveur.cle })
+                    .filter { it != api.serveur.cle }
+                var refus = 0
+                for (c in autres) runCatching { app.apiDe(c)?.piloter(cle, valeur, null) }.onFailure { refus++ }
+                messages.tryEmit(if (refus == 0) "Réglage envoyé à ${autres.size + 1} serveurs."
+                else "$refus serveur(s) n'ont pas accepté le réglage (droit de pilotage ?).")
+            }
             rafraichirCameras()
         } catch (e: Exception) {
-            if (e is ErreurApi && e.code == 401) gererErreur(e)
-            _pilotage.value = avant.copy(enCours = avant.enCours - id)
+            if (e is ErreurApi && e.code == 401 && api.serveur.cle == reglages.maintenant().serveur?.cle) gererErreur(e)
+            if (surCeServeur) _pilotage.value = avant.copy(enCours = avant.enCours - id)
             messages.tryEmit(messageErreur(e))
         }
     }
@@ -356,27 +493,56 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // --- journal ---------------------------------------------------------------------------------
+    /** Plus ancien identifiant chargé par serveur (null : tout est chargé), pour « charger la suite ». */
+    private val plusAnciens = HashMap<String, Long?>()
+
+    /** Journal de tous les PC Flux affichés (ou du serveur de la caméra choisie), le plus récent en haut. */
     fun chargerJournal(reinitialiser: Boolean = true, camera: String? = _journal.value.filtreCamera) = viewModelScope.launch {
-        val api = app.api() ?: return@launch
-        val avant = if (reinitialiser) null else _journal.value.evenements.lastOrNull()?.id
         if (!reinitialiser && (_journal.value.fin || _journal.value.chargement)) return@launch
+        val e = reglages.maintenant()
+        val courant = e.serveur ?: return@launch
+        val cleCamera = camera?.takeIf { '|' in it }?.substringBefore('|')
+        val cibles = buildList {
+            if (e.jeton != null && (cleCamera == courant.cle || (cleCamera == null && e.courantAffiche))) add(courant)
+            e.autres.filter { it.jeton != null && (cleCamera == it.serveur.cle || (cleCamera == null && it.affiche)) }
+                .forEach { add(it.serveur) }
+            if (isEmpty() && cleCamera == null && e.jeton != null) add(courant)
+        }
+        if (cibles.isEmpty()) return@launch
         _journal.value = _journal.value.copy(chargement = true, filtreCamera = camera, erreur = null,
             evenements = if (reinitialiser && camera != _journal.value.filtreCamera) emptyList() else _journal.value.evenements)
-        try {
-            val r = api.journal(avant, camera)
-            val liste = if (reinitialiser) r.journal else _journal.value.evenements + r.journal
-            _journal.value = EtatJournal(liste, false, r.journal.size < 40, null, camera)
-        } catch (e: Exception) {
-            if (e is ErreurApi && e.code == 401) gererErreur(e)
-            _journal.value = _journal.value.copy(chargement = false, erreur = messageErreur(e))
+        if (reinitialiser) plusAnciens.clear()
+        val idBrut = camera?.substringAfter('|')
+        val plusieurs = e.serveursAffiches > 1
+        val nouveaux = mutableListOf<Evenement>()
+        var erreur: String? = null
+        for (s in cibles) {
+            if (!reinitialiser && plusAnciens.containsKey(s.cle) && plusAnciens[s.cle] == null) continue
+            try {
+                val api = app.apiDe(s.cle) ?: continue
+                val r = api.journal(if (reinitialiser) null else plusAnciens[s.cle], idBrut)
+                plusAnciens[s.cle] = if (r.journal.size < 40) null else r.journal.last().id
+                nouveaux += r.journal.map { it.copy(srv = s.cle, serveur = if (plusieurs) s.nom else "",
+                    cameraId = idCamera(s.cle, it.cameraId)) }
+            } catch (ex: kotlinx.coroutines.CancellationException) {
+                throw ex
+            } catch (ex: Exception) {
+                if (ex is ErreurApi && ex.code == 401 && s.cle == courant.cle) gererErreur(ex)
+                plusAnciens[s.cle] = null
+                erreur = messageErreur(ex)
+            }
         }
+        nouveaux.sortByDescending { it.heure }
+        val liste = if (reinitialiser) nouveaux else _journal.value.evenements + nouveaux
+        _journal.value = EtatJournal(liste, false, plusAnciens.values.all { it == null },
+            if (liste.isEmpty()) erreur else null, camera)
     }
 
     // --- veille des alertes ---------------------------------------------------------------------
     /** Appelée quand l'appli est au premier plan et connectée : démarre la veille (service ou écoute locale). */
     fun demarrerVeille() = viewModelScope.launch {
         val e = reglages.maintenant()
-        if (e.jeton == null) return@launch
+        if (e.jeton == null && e.autres.none { it.jeton != null }) return@launch
         if (e.ecouteArrierePlan) {
             ecouteLocale?.cancel()
             AlertService.demarrer(getApplication())

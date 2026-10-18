@@ -102,7 +102,8 @@ object Notifications {
             cloche.mode == ModeAlertes.SILENCIEUSES -> CANAL_DISCRETES
             else -> CANAL_ALERTES
         }
-        val titre = if (e.prioritaire) "⚠ ${e.camera} · Liste noire" else e.camera
+        val camera = if (e.serveur.isNotBlank()) "${e.camera} · ${e.serveur}" else e.camera
+        val titre = if (e.prioritaire) "⚠ $camera · Liste noire" else camera
         val texte = e.texte + if (regroupees > 0) "  (+$regroupees pendant le délai)" else ""
         val b = NotificationCompat.Builder(context, canal)
             .setSmallIcon(R.drawable.ic_notif)

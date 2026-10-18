@@ -41,7 +41,7 @@ class AlertService : Service() {
         if (travail?.isActive != true) {
             travail = portee.launch {
                 val e = app.reglages.maintenant()
-                if (e.jeton == null || !e.ecouteArrierePlan) {
+                if ((e.jeton == null && e.autres.none { it.jeton != null }) || !e.ecouteArrierePlan) {
                     stopSelf()
                     return@launch
                 }

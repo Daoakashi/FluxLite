@@ -31,8 +31,8 @@ android {
         minSdk = 26
         targetSdk = 36
         // À chaque nouvelle version publiée : augmenter versionCode (entier) ET versionName.
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 4
+        versionName = "1.3.0"
         // Site officiel (GitHub Pages) : l'application y vérifie ses mises à jour.
         // Si le site change d'adresse, modifiez ces deux lignes puis publiez une nouvelle version.
         buildConfigField("String", "SITE_URL", "\"https://daoakashi.github.io/flux-web\"")
