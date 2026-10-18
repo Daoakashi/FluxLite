@@ -23,3 +23,5 @@ FluxLite est un logiciel libre de **DMS Security**, publié sous la licence **GN
 **Feedback.** Dans l'application : Compte › Feedback. Le message part :
 - par mail à dms.security.list@gmail.com ;
 - ou en ticket sur https://github.com/Daoakashi/FluxLite/issues.
+
+**Crédits.** Crédits : conception, choix des fonctions, tests et validation par DMS Security. Code et textes écrits en partie avec l'assistant d'IA Claude (Anthropic), qui cède à l'utilisateur ses droits éventuels sur ce qu'il produit. La licence AGPL-3.0 couvre l'apport humain ; les parties produites uniquement par l'IA peuvent ne pas être protégées par le droit d'auteur. Détail : `juridique/DECLARATION-IA.md` du dépôt Flux.

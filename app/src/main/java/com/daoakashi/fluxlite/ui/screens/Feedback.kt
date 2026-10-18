@@ -24,6 +24,9 @@ import com.daoakashi.fluxlite.ui.theme.Flux
 const val FEEDBACK_MAIL = "dms.security.list@gmail.com"
 const val FEEDBACK_GITHUB = "https://github.com/Daoakashi/FluxLite/issues/new"
 
+/** Crédits affichés dans l'onglet Compte. */
+const val CREDITS_IA = "Crédits : conception, choix des fonctions, tests et validation par DMS Security. Code et textes écrits en partie avec l'assistant d'IA Claude (Anthropic), qui cède à l'utilisateur ses droits éventuels sur ce qu'il produit. La licence AGPL-3.0 couvre l'apport humain ; les parties produites uniquement par l'IA peuvent ne pas être protégées par le droit d'auteur."
+
 private val SUJETS = listOf("Idée", "Problème", "Question")
 
 private fun contexteFeedback() =

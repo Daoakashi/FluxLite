@@ -266,7 +266,7 @@ fun EcranCompte(vm: AppViewModel, basDePage: androidx.compose.ui.unit.Dp) {
             Bouton("Se déconnecter", { dialogue = Dialogue.DECONNEXION }, Modifier.fillMaxWidth(), StyleBouton.DANGER, Ico.SORTIE)
             Text("FluxLite · application compagnon de Flux\nConnexion chiffrée, liée à la clé de votre serveur\n" +
                 "© 2026 DMS Security · logiciel libre (GNU AGPL-3.0), sans garantie\nDéveloppé avec l'aide d'outils " +
-                "d'intelligence artificielle. Aucune image n'est envoyée à un service d'IA.",
+                "d'intelligence artificielle. Aucune image n'est envoyée à un service d'IA.\n\n" + CREDITS_IA,
                 style = MaterialTheme.typography.bodySmall, color = c.texte3, textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().padding(top = 18.dp))
         }
