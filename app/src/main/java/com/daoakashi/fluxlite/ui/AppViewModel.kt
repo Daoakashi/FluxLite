@@ -17,6 +17,7 @@ import com.daoakashi.fluxlite.net.ErreurApi
 import com.daoakashi.fluxlite.net.EtatPilotage
 import com.daoakashi.fluxlite.net.Evenement
 import com.daoakashi.fluxlite.net.InfoServeur
+import com.daoakashi.fluxlite.net.PlageHoraire
 import com.daoakashi.fluxlite.net.Profil
 import com.daoakashi.fluxlite.net.Relais
 import com.daoakashi.fluxlite.net.Serveur
@@ -481,6 +482,32 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         } catch (e: Exception) {
             if (e is ErreurApi && e.code == 401 && api.serveur.cle == reglages.maintenant().serveur?.cle) gererErreur(e)
             if (surCeServeur) _pilotage.value = avant.copy(enCours = avant.enCours - id)
+            messages.tryEmit(messageErreur(e))
+        }
+    }
+
+    /** Plage horaire de la détection, sur le serveur choisi (et les autres si « appliquer aussi » est coché). */
+    fun piloterHoraire(h: PlageHoraire) = viewModelScope.launch {
+        val api = app.apiDe(_pilotageSrv.value) ?: return@launch
+        val avant = _pilotage.value
+        _pilotage.value = avant.copy(enCours = avant.enCours + "horaire", etat = avant.etat?.copy(horaire = h))
+        try {
+            val e = api.piloterHoraire(h)
+            _pilotage.value = EtatPilotageUi(e, enCours = _pilotage.value.enCours - "horaire")
+            if (piloterTous.value) {
+                val etat = reglages.maintenant()
+                val autres = (listOfNotNull(etat.serveur?.cle) + etat.autres.filter { it.jeton != null }.map { it.serveur.cle })
+                    .filter { it != api.serveur.cle }
+                var refus = 0
+                for (c in autres) runCatching { app.apiDe(c)?.piloterHoraire(h) }.onFailure { refus++ }
+                messages.tryEmit(if (refus == 0) "Plage horaire envoyée à ${autres.size + 1} serveurs."
+                else "$refus serveur(s) n'ont pas accepté la plage horaire (Flux 0.10.1 ou droit de pilotage ?).")
+            } else {
+                messages.tryEmit(if (h.actif) "Plage horaire enregistrée." else "Plage horaire désactivée.")
+            }
+        } catch (e: Exception) {
+            if (e is ErreurApi && e.code == 401 && api.serveur.cle == reglages.maintenant().serveur?.cle) gererErreur(e)
+            _pilotage.value = avant.copy(enCours = avant.enCours - "horaire")
             messages.tryEmit(messageErreur(e))
         }
     }

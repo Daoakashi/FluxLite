@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -234,6 +235,18 @@ class Api(val serveur: Serveur, private val jeton: String? = null) {
     suspend fun piloter(cle: String, valeur: Boolean, cameraId: String? = null): EtatPilotage =
         envoyer("POST", "/pilotage", buildJsonObject {
             put("cle", cle); put("valeur", valeur); cameraId?.let { put("camera", it) }
+        })
+
+    /** Plage horaire de la détection (Flux 0.10.1+). */
+    suspend fun piloterHoraire(h: PlageHoraire): EtatPilotage =
+        envoyer("POST", "/pilotage", buildJsonObject {
+            put("cle", "horaire")
+            put("valeur", buildJsonObject {
+                put("actif", h.actif)
+                put("debut", h.debut)
+                put("fin", h.fin)
+                put("jours", JsonArray(h.jours.map { JsonPrimitive(it) }))
+            })
         })
 
     suspend fun image(cameraId: String, largeur: Int = 640): Bitmap? =

@@ -91,11 +91,24 @@ data class CameraPilotee(val id: String, val nom: String, val detection: Boolean
 @Serializable
 data class CanalFlux(val cle: String, val nom: String, val actif: Boolean = false, val configure: Boolean = true)
 
+/** Plage horaire de la détection (Flux 0.10.1 et plus). jours : 0 = lundi … 6 = dimanche. */
+@Serializable
+data class PlageHoraire(
+    val actif: Boolean = false,
+    val debut: String = "06:00",
+    val fin: String = "22:00",
+    val jours: List<Int> = listOf(0, 1, 2, 3, 4, 5, 6),
+)
+
 @Serializable
 data class EtatPilotage(
     val detection: Boolean = true,
     val cameras: List<CameraPilotee> = emptyList(),
     val canaux: List<CanalFlux> = emptyList(),
+    /** null : PC Flux plus ancien que 0.10.1 (pas de plage horaire). */
+    val horaire: PlageHoraire? = null,
+    @SerialName("horaire_texte") val horaireTexte: String = "",
+    @SerialName("hors_plage") val horsPlage: Boolean = false,
 )
 
 @Serializable
