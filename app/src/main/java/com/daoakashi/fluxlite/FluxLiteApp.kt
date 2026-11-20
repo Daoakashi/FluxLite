@@ -68,6 +68,8 @@ class FluxLiteApp : Application() {
                 if (!r.isSuccessful) return@runCatching null
                 val o = Json.parseToJsonElement(r.body?.string().orEmpty()).jsonObject
                 if (o["actif"]?.jsonPrimitive?.booleanOrNull == false) return@runCatching ""
+                // « url » : relais du serveur Flux sur Cloudflare (wss://…)
+                Relais.lire(o["url"]?.jsonPrimitive?.contentOrNull)?.let { return@runCatching it.toString() }
                 val hote = o["hote"]?.jsonPrimitive?.contentOrNull.orEmpty().trim()
                 val port = o["port"]?.jsonPrimitive?.intOrNull ?: Relais.PORT_DEFAUT
                 Relais.lire(if (hote.isEmpty()) "" else if (hote.contains(':')) "[$hote]:$port" else "$hote:$port")

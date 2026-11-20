@@ -37,19 +37,31 @@ public final class Relais {
 
     private static final Pattern HOTE_VALIDE = Pattern.compile("[A-Za-z0-9.\\-:]+");
 
-    /** Adresse d'un relais : hôte et port. */
+    /** Adresse d'un relais : hôte et port ; ws = relais du serveur Flux sur Cloudflare (joint en WebSocket). */
     public static final class Adresse {
         public final String hote;
         public final int port;
+        public final boolean ws;
+        public final boolean tls;
 
         public Adresse(String hote, int port) {
+            this(hote, port, false, true);
+        }
+
+        public Adresse(String hote, int port, boolean ws, boolean tls) {
             this.hote = hote;
             this.port = port;
+            this.ws = ws;
+            this.tls = tls;
         }
 
         @Override
         public String toString() {
             String h = hote.contains(":") ? "[" + hote + "]" : hote;
+            if (ws) {
+                int defaut = tls ? 443 : 80;
+                return (tls ? "wss://" : "ws://") + h + (port == defaut ? "" : ":" + port);
+            }
             return port == PORT_DEFAUT ? h : h + ":" + port;
         }
     }
@@ -69,10 +81,24 @@ public final class Relais {
     }
 
     // --- adresses ---------------------------------------------------------------------------------------
-    /** « relais.exemple.be », « relais.exemple.be:8443 », « [2001:db8::1]:443 » -> Adresse, ou null. */
+    /**
+     * « relais.exemple.be », « relais.exemple.be:8443 », « [2001:db8::1]:443 » -> Adresse, ou null.
+     * « wss://serveur.exemple.be » : relais du serveur Flux (Cloudflare), joint en WebSocket.
+     */
     public static Adresse lire(String texte) {
         if (texte == null) return null;
         String t = texte.trim();
+        boolean ws = false;
+        boolean tls = true;
+        String bas = t.toLowerCase(Locale.ROOT);
+        if (bas.startsWith("wss://")) {
+            ws = true;
+            t = t.substring(6);
+        } else if (bas.startsWith("ws://")) {
+            ws = true;
+            tls = false;
+            t = t.substring(5);
+        }
         for (String prefixe : new String[]{"https://", "http://", "fluxrelais://"}) {
             if (t.toLowerCase(Locale.ROOT).startsWith(prefixe)) t = t.substring(prefixe.length());
         }
@@ -96,12 +122,12 @@ public final class Relais {
         }
         int p;
         try {
-            p = port.isEmpty() ? PORT_DEFAUT : Integer.parseInt(port);
+            p = port.isEmpty() ? (ws && !tls ? 80 : PORT_DEFAUT) : Integer.parseInt(port);
         } catch (NumberFormatException e) {
             return null;
         }
         if (hote.isEmpty() || p <= 0 || p >= 65536 || !HOTE_VALIDE.matcher(hote).matches()) return null;
-        return new Adresse(hote, p);
+        return new Adresse(hote, p, ws, tls);
     }
 
     public static void definirSite(String texte) {
@@ -263,7 +289,19 @@ public final class Relais {
                     return;
                 }
             }
-            super.connect(new InetSocketAddress(relais.hote, relais.port), delai);
+            if (relais.ws) {
+                // Serveur Flux sur Cloudflare : WebSocket, reliée à cette socket par la boucle locale (PontWs)
+                PontWs.Liaison l = PontWs.ouvrir(relais, cle, delai > 0 ? delai : 15_000);
+                try {
+                    super.connect(new InetSocketAddress(InetAddress.getLoopbackAddress(), l.port), delai);
+                    l.connectee(getLocalPort());
+                } catch (IOException e) {
+                    l.abandonner();
+                    throw e;
+                }
+            } else {
+                super.connect(new InetSocketAddress(relais.hote, relais.port), delai);
+            }
             int ancien = getSoTimeout();
             setSoTimeout(delai > 0 ? Math.max(delai, 12_000) : 12_000);
             try {
